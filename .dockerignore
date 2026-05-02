@@ -1,0 +1,16 @@
+.git
+.github
+.next
+node_modules
+coverage
+npm-debug.log*
+.DS_Store
+.env
+.env.*
+!.env.example
+storage/fs-db.json
+storage/runtime-secrets.json
+storage/uploads/*
+storage/outputs/*
+!storage/uploads/.gitkeep
+!storage/outputs/.gitkeep

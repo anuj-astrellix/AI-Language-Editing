@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-language-editor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-language-editor
+  template:
+    metadata:
+      labels:
+        app: ai-language-editor
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/anuj-astrellix/ai-language-editing:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: ai-language-editor-config
+            - secretRef:
+                name: ai-language-editor-secrets
+          volumeMounts:
+            - name: storage
+              mountPath: /app/storage
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 45
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: ai-language-editor-storage
