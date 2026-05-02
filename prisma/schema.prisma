@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  REVIEW
+  COMPLETED
+  FAILED
+}
+
+enum SpecificationSourceType {
+  TEXT
+  DOCX
+  PDF
+  TXT
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DecisionType {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum GeneratedFileType {
+  CLEAN_DOCX
+  COMPARISON_DOCX
+  CHANGELOG_PDF
+  HTML_PREVIEW
+  JSON_AUDIT
+}
+
+model User {
+  id        String      @id @default(uuid())
+  email     String      @unique
+  name      String?
+  role      String      @default("editor")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  documents Document[]
+  jobs      EditingJob[]
+  specs     EditingSpecification[]
+  decisions ChangeDecision[]
+  audits    AuditLog[]
+}
+
+model Document {
+  id               String                 @id @default(uuid())
+  userId           String?
+  originalFilename String
+  mimeType         String
+  fileSizeBytes    Int
+  storagePath      String
+  checksum         String?
+  status           DocumentStatus         @default(UPLOADED)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  user             User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  jobs             EditingJob[]
+  specifications   EditingSpecification[]
+
+  @@index([userId])
+}
+
+model EditingSpecification {
+  id            String                @id @default(uuid())
+  userId        String?
+  documentId    String?
+  sourceType    SpecificationSourceType
+  sourcePath    String?
+  rawText       String
+  extractedText String
+  rulesJson     Json
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  user          User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  document      Document?             @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  jobs          EditingJob[]
+
+  @@index([userId])
+  @@index([documentId])
+}
+
+model EditingJob {
+  id                   String              @id @default(uuid())
+  userId               String?
+  documentId           String
+  specificationId      String
+  status               JobStatus           @default(PENDING)
+  progressPercent      Float               @default(0)
+  currentSegmentIndex  Int                 @default(0)
+  totalSegments        Int                 @default(0)
+  currentSectionLabel  String?
+  model                String
+  allowMeaningChanges  Boolean             @default(false)
+  allowProtectedEdits  Boolean             @default(false)
+  startedAt            DateTime?
+  finishedAt           DateTime?
+  errorMessage         String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  user                 User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  document             Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  specification        EditingSpecification @relation(fields: [specificationId], references: [id], onDelete: Cascade)
+  segments             DocumentSegment[]
+  changes              AiSuggestedChange[]
+  decisions            ChangeDecision[]
+  generatedFiles       GeneratedFile[]
+  audits               AuditLog[]
+
+  @@index([userId])
+  @@index([documentId])
+  @@index([specificationId])
+  @@index([status])
+}
+
+model DocumentSegment {
+  id              String             @id @default(uuid())
+  jobId            String
+  segmentIndex     Int
+  segmentKey       String
+  sectionLabel     String?
+  text             String
+  contextBefore    String?
+  contextAfter     String?
+  styleMetadata    Json
+  isProtected      Boolean            @default(false)
+  isEditable       Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  job              EditingJob         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  changes          AiSuggestedChange[]
+
+  @@unique([jobId, segmentIndex])
+  @@index([jobId])
+}
+
+model AiSuggestedChange {
+  id              String         @id @default(uuid())
+  jobId           String
+  segmentId       String
+  originalText    String
+  editedText      String
+  editReason      String
+  riskLevel       RiskLevel
+  changedEntities Json
+  diffHtml        String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  job             EditingJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  segment         DocumentSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  decisions       ChangeDecision[]
+
+  @@index([jobId])
+  @@index([segmentId])
+}
+
+model ChangeDecision {
+  id         String       @id @default(uuid())
+  jobId      String
+  changeId   String
+  userId     String?
+  decision   DecisionType @default(PENDING)
+  decidedAt  DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  job        EditingJob   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  change     AiSuggestedChange @relation(fields: [changeId], references: [id], onDelete: Cascade)
+  user       User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([jobId, changeId])
+  @@index([jobId])
+  @@index([changeId])
+}
+
+model GeneratedFile {
+  id          String            @id @default(uuid())
+  jobId       String
+  fileType    GeneratedFileType
+  storagePath String
+  mimeType    String
+  metadata    Json
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  job         EditingJob        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, fileType])
+  @@index([jobId])
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  jobId       String?
+  userId      String?
+  action      String
+  detailsJson Json
+  createdAt   DateTime  @default(now())
+  job         EditingJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([userId])
+}

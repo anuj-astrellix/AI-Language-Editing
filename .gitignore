@@ -1,0 +1,12 @@
+.next
+node_modules
+.env
+coverage
+storage/uploads/*
+storage/outputs/*
+!storage/uploads/.gitkeep
+!storage/outputs/.gitkeep
+.prisma
+.DS_Store
+storage/fs-db.json
+storage/runtime-secrets.json
